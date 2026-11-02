@@ -1,21 +1,26 @@
 //! Simple base64 encoding and decoding implementation.
 //!
 //!
-//! <https://datatracker.ietf.org/doc/html/rfc4648>
+//! RFC: <https://datatracker.ietf.org/doc/html/rfc4648>.
 
+/// The default padding byte (`=`).
 const PADDING_DEFAULT: u8 = b'=';
 
+/// The alphabet for the standard base64 variant. Consumed by `Config`.
 const ALPHABET_STANDARD: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// The config for the standard base64 variant. Provided by default.
 const STANDARD: Config = match Config::new(ALPHABET_STANDARD, PADDING_DEFAULT) {
     Ok(config) => config,
     Err(_) => panic!("invalid standard config"),
 };
 
+/// The alphabet for the URL-safe base64 variant. Consumed by `Config`.
 const ALPHABET_URLSAFE: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
+/// The config for the URL-safe base64 variant. Provided by default.
 const URLSAFE: Config = match Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT) {
     Ok(config) => config,
     Err(_) => panic!("invalid standard config"),
@@ -25,13 +30,19 @@ const URLSAFE: Config = match Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT) {
 /// It is constructed from an alphabet and padding character.
 #[derive(Debug, PartialEq)]
 pub struct Config {
-    encode_table: &'static [u8; 64],
+    /// The decode table is used to find the corresponding
+    /// alphabet character for each possible byte (u8).
     decode_table: [u8; 256],
+    /// The encode table is used to get the alphabet char
+    /// for each 6 bit group.
+    encode_table: &'static [u8; 64],
+    /// The padding byte.
     padding: u8,
 }
 
 /// The error returned on invalid config construction.
-#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConfigError {
     /// The alphabet contains a duplicate character e.g. two times 'R'.
     Duplicate(u8),
@@ -40,38 +51,47 @@ pub enum ConfigError {
 }
 
 /// The error returned on invalid decoder input.
-#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DecodeError {
     /// A character in the input does not match a symbol in the decode table.
     Invalid(u8),
+    /// The input length is not exactly a multiple of 4.
+    InvalidLength,
     /// The input either contains more than 2 padding characters or it contains
     /// padding characters when it should not i.e. input length is divisible by 4.
     InvalidPadding,
-    /// The input length is not exactly a multiple of 4.
-    InvalidLength,
     /// The input contains non-zero bits after the last encoded byte.
     TrailingBits,
 }
 
 /// Encode `input` using the standard base64 configuration.
-pub fn encode(input: impl AsRef<[u8]>) -> String {
+pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
     encode_with_config(input.as_ref(), &STANDARD)
 }
 
 /// Decode `input` using the standard base64 configuration.
-pub fn decode(input: impl AsRef<str>) -> Result<Vec<u8>, DecodeError> {
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
+pub fn decode<T: AsRef<str>>(input: T) -> Result<Vec<u8>, DecodeError> {
     decode_with_config(input.as_ref(), &STANDARD)
 }
 
 /// Encode `input` using the urlsafe base64 configuration.
 /// Urlsafe means `/` and `+` from standard are replaced with `_` and `+`.
-pub fn encode_urlsafe(input: impl AsRef<[u8]>) -> String {
+pub fn encode_urlsafe<T: AsRef<[u8]>>(input: T) -> String {
     encode_with_config(input.as_ref(), &URLSAFE)
 }
 
 /// Decode `input` using the urlsafe base64 configuration.
 /// Urlsafe means `/` and `+` from standard are replaced with `_` and `+`.
-pub fn decode_urlsafe(input: impl AsRef<str>) -> Result<Vec<u8>, DecodeError> {
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
+pub fn decode_urlsafe<T: AsRef<str>>(input: T) -> Result<Vec<u8>, DecodeError> {
     decode_with_config(input.as_ref(), &URLSAFE)
 }
 
@@ -81,40 +101,47 @@ pub fn encode_with_config(input: &[u8], config: &Config) -> String {
 
     let mut output = String::with_capacity(capacity);
 
-    let mut groups = input.chunks_exact(3);
-    for group in &mut groups {
+    let (groups, remainder) = input.as_chunks::<3>();
+    for group in groups {
         encode_group(config.encode_table, group, &mut output);
     }
 
-    let remainder = groups.remainder();
     if !remainder.is_empty() {
         encode_group(config.encode_table, remainder, &mut output);
         output.extend(core::iter::repeat_n(
             config.padding as char,
-            3 - groups.remainder().len(),
+            3 - remainder.len(),
         ));
     }
 
     output
 }
 
+/// Decode a group of max 3 bytes (24 bits) into the corresponding 4 chars (24 bits).
 fn encode_group(encode_table: &[u8; 64], group: &[u8], output: &mut String) {
-    debug_assert!(!group.is_empty() && group.len() <= 3);
+    debug_assert!(
+        !group.is_empty() && group.len() <= 3,
+        "groups must be at most 3 bytes"
+    );
 
     let n = group
         .iter()
         .enumerate()
-        .fold(0u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        .fold(0u32, |n, (i, &b)| n | (u32::from(b) << (16 - 8 * i)));
 
     output.extend(
         [18, 12, 6, 0]
             .into_iter()
             .take(group.len() + 1)
-            .map(|shift| encode_table[(n >> shift & 0x3F) as usize] as char),
+            .map(|shift: u32| encode_table[((n >> shift) & 0x3F) as usize] as char),
     );
 }
 
 /// Decode `input` using an explicit configuration.
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
 pub fn decode_with_config(input: &str, config: &Config) -> Result<Vec<u8>, DecodeError> {
     if !input.len().is_multiple_of(4) {
         return Err(DecodeError::InvalidLength);
@@ -130,14 +157,14 @@ pub fn decode_with_config(input: &str, config: &Config) -> Result<Vec<u8>, Decod
 
     let data = input_without_padding.as_bytes();
 
-    let mut output = Vec::with_capacity(data.len() / 4 * 3 + 2);
+    let mut output = Vec::with_capacity((data.len() >> 2) * 3 + 2);
 
-    let mut groups = data.chunks_exact(4);
-    for group in &mut groups {
+    let (groups, remainder) = data.as_chunks::<4>();
+
+    for group in groups {
         output.extend(decode_group(&config.decode_table, group)?);
     }
 
-    let remainder = groups.remainder();
     if !remainder.is_empty() {
         let bytes = decode_group(&config.decode_table, remainder)?;
         let n_bytes = remainder.len() - 1;
@@ -156,8 +183,9 @@ pub fn decode_with_config(input: &str, config: &Config) -> Result<Vec<u8>, Decod
     Ok(output)
 }
 
+/// Decode a group of max 4 chars (24 bits) into the corresponding 3 bytes (24 bits).
 fn decode_group(decode_table: &[u8; 256], group: &[u8]) -> Result<[u8; 3], DecodeError> {
-    debug_assert!(group.len() <= 4);
+    debug_assert!(group.len() <= 4, "groups must be at most 4 bytes");
 
     let mut n: u32 = 0;
     for i in 0..4 {
@@ -168,7 +196,7 @@ fn decode_group(decode_table: &[u8; 256], group: &[u8]) -> Result<[u8; 3], Decod
             },
             None => 0, // missing symbol: zero bits
         };
-        n = (n << 6) | value;
+        n = (n << 6u32) | value;
     }
 
     let [_, a, b, c] = n.to_be_bytes();
@@ -177,6 +205,13 @@ fn decode_group(decode_table: &[u8; 256], group: &[u8]) -> Result<[u8; 3], Decod
 }
 
 impl Config {
+    /// Create a encoding and decoding config.
+    ///
+    /// Using the same config for encoding and decoding guarantees that `decode(encode(input)) == input`.
+    ///
+    /// # Errors
+    ///
+    /// Invalid alphabets will cause this function to return `ConfigError`.
     pub const fn new(alphabet: &'static [u8; 64], padding: u8) -> Result<Self, ConfigError> {
         // It is not possible to use `?` in `const fn`s.
         if let Err(err) = check_alphabet(alphabet, padding) {
@@ -185,11 +220,11 @@ impl Config {
 
         let mut decode_table = [0xFF; 256];
 
-        let mut i = 0;
-        while i < alphabet.len() {
-            let s = alphabet[i];
-            decode_table[s as usize] = i as u8;
-            i += 1;
+        let mut i: u8 = 0;
+        while (i as usize) < alphabet.len() {
+            let s = alphabet[i as usize];
+            decode_table[s as usize] = i;
+            i = i.strict_add(1);
         }
 
         Ok(Self {
@@ -200,10 +235,14 @@ impl Config {
     }
 }
 
+/// Checks wether the give `alphabet` is valid. Valid alphabets are:
+/// - 64 chars long
+/// - have no duplicate chars
+/// - have no reserved chars  (currently only padding is reserved)
 const fn check_alphabet(alphabet: &[u8; 64], padding: u8) -> Result<(), ConfigError> {
     let mut index = 0;
 
-    while index < 64 {
+    while index < alphabet.len() {
         let byte = alphabet[index];
 
         if byte == padding {
@@ -211,7 +250,7 @@ const fn check_alphabet(alphabet: &[u8; 64], padding: u8) -> Result<(), ConfigEr
         }
 
         let mut duplicate_i = 0;
-        while duplicate_i < 64 {
+        while duplicate_i < alphabet.len() {
             if duplicate_i != index && byte == alphabet[duplicate_i] {
                 return Err(ConfigError::Duplicate(byte));
             }
@@ -228,8 +267,8 @@ impl core::error::Error for DecodeError {}
 
 impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            DecodeError::Invalid(c) => write!(f, "invalid input char '{c}'"),
+        match *self {
+            DecodeError::Invalid(c) => write!(f, "invalid input char '{}'", char::from(c)),
             DecodeError::InvalidLength => write!(f, "invalid length"),
             DecodeError::InvalidPadding => write!(f, "invalid padding"),
             DecodeError::TrailingBits => write!(f, "trailing bits"),
@@ -241,9 +280,9 @@ impl core::error::Error for ConfigError {}
 
 impl core::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            ConfigError::Reserved(byte) => write!(f, "reserved byte '{byte:?}'"),
-            ConfigError::Duplicate(byte) => write!(f, "duplicate byte '{byte:?}'"),
+        match *self {
+            ConfigError::Reserved(byte) => write!(f, "reserved byte '{}'", char::from(byte)),
+            ConfigError::Duplicate(byte) => write!(f, "duplicate byte '{}'", char::from(byte)),
         }
     }
 }
