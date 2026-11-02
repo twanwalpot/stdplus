@@ -292,8 +292,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_config_tables() {
-        let config = Config::new(&ALPHABET_STANDARD, b'=').unwrap();
+    fn config_tables() {
+        let config = Config::new(ALPHABET_STANDARD, b'=').unwrap();
 
         assert_eq!(config.padding, b'=');
         assert_eq!(config.encode_table, ALPHABET_STANDARD);
@@ -338,21 +338,21 @@ mod tests {
             ConfigError::Reserved(b'='),
         );
 
-        assert!(Config::new(ALPHABET_STANDARD, PADDING_DEFAULT).is_ok());
-        assert!(Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT).is_ok());
+        Config::new(ALPHABET_STANDARD, PADDING_DEFAULT).unwrap();
+        Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT).unwrap();
     }
 
     #[test]
-    fn test_decode_error() {
-        assert!(!DecodeError::InvalidLength.to_string().is_empty());
-        assert!(!DecodeError::InvalidPadding.to_string().is_empty());
-        assert!(!DecodeError::TrailingBits.to_string().is_empty());
-        assert!(!DecodeError::Invalid(b'*').to_string().is_empty());
+    fn decode_error() {
+        assert_ne!(DecodeError::InvalidLength.to_string(), "");
+        assert_ne!(DecodeError::InvalidPadding.to_string(), "");
+        assert_ne!(DecodeError::TrailingBits.to_string(), "");
+        assert_ne!(DecodeError::Invalid(b'*').to_string(), "");
     }
 
     #[test]
-    fn test_config_error() {
-        assert!(!ConfigError::Duplicate(b'a').to_string().is_empty());
-        assert!(!ConfigError::Reserved(b'=').to_string().is_empty());
+    fn config_error() {
+        assert_ne!(ConfigError::Duplicate(b'a').to_string(), "");
+        assert_ne!(ConfigError::Reserved(b'=').to_string(), "");
     }
 }

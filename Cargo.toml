@@ -22,6 +22,7 @@ must_use_candidate = "allow"
 inline_trait_bounds = "allow"
 arbitrary_source_item_ordering = "allow"
 unseparated_literal_suffix = "allow"
+tests_outside_test_module = "allow"
 
 [features]
 base64 = []

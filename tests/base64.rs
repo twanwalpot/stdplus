@@ -4,7 +4,7 @@ use stdplus::base64::{
 };
 
 #[test]
-fn test_rfc4648_vectors() {
+fn rfc4648_vectors() {
     // https://datatracker.ietf.org/doc/html/rfc4648#section-10
 
     assert_eq!(&encode(""), "");
@@ -17,7 +17,7 @@ fn test_rfc4648_vectors() {
 }
 
 #[test]
-fn test_urlsafe_encoding() {
+fn urlsafe_encoding() {
     assert_eq!(encode_urlsafe(b""), "");
     assert_eq!(encode_urlsafe(b"f"), "Zg==");
     assert_eq!(encode_urlsafe(b"fo"), "Zm8=");
@@ -29,7 +29,7 @@ fn test_urlsafe_encoding() {
 }
 
 #[test]
-fn test_urlsafe_decoding() {
+fn urlsafe_decoding() {
     assert_eq!(decode_urlsafe(""), Ok(vec![]));
     assert_eq!(decode_urlsafe("Zg=="), Ok(b"f".to_vec()));
     assert_eq!(decode_urlsafe("Zm8="), Ok(b"fo".to_vec()));
@@ -41,20 +41,20 @@ fn test_urlsafe_decoding() {
 }
 
 #[test]
-fn test_binary_data() {
+fn binary_data() {
     let input = [0x00, 0x01, 0x7f, 0x80, 0xfe, 0xff];
-    let encoded = encode(&input);
+    let encoded = encode(input);
     assert_eq!(decode(&encoded).unwrap(), input);
 }
 
 #[test]
-fn test_all_byte_values() {
+fn all_byte_values() {
     let input: Vec<u8> = (0..=255).collect();
-    assert_eq!(decode(&encode(&input)).unwrap(), input);
+    assert_eq!(decode(encode(&input)).unwrap(), input);
 }
 
 #[test]
-fn test_padding() {
+fn padding() {
     assert_eq!(decode("Zg==").unwrap(), b"f");
     assert_eq!(decode("Zm8=").unwrap(), b"fo");
     assert_eq!(decode("Zm9v").unwrap(), b"foo");
@@ -69,13 +69,13 @@ fn test_padding() {
 }
 
 #[test]
-fn test_trailing_bits() {
+fn trailing_bits() {
     assert_eq!(decode("Zh==").unwrap_err(), DecodeError::TrailingBits);
     assert_eq!(decode("Zm+=").unwrap_err(), DecodeError::TrailingBits);
 }
 
 #[test]
-fn test_decode_invalid_input() {
+fn decode_invalid_input() {
     assert_eq!(
         decode("SGVsbG8sI*HdvcmxIQ==").unwrap_err(),
         DecodeError::Invalid(b'*')
@@ -98,7 +98,7 @@ fn test_decode_invalid_input() {
 }
 
 #[test]
-fn test_custom_config() {
+fn custom_config() {
     let config = Config::new(
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
         b'=',
@@ -116,7 +116,7 @@ fn test_custom_config() {
 }
 
 #[test]
-fn test_config_error() {
+fn config_error() {
     assert_eq!(
         Config::new(
             b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -137,7 +137,7 @@ fn test_config_error() {
 }
 
 #[test]
-fn test_decode_error() {
+fn decode_error() {
     assert_eq!(decode("ABC*").unwrap_err(), DecodeError::Invalid(b'*'));
     assert_eq!(decode("AAAAA===").unwrap_err(), DecodeError::InvalidPadding);
     assert_eq!(decode("A").unwrap_err(), DecodeError::InvalidLength);
