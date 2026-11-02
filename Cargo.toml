@@ -7,7 +7,24 @@ edition = "2024"
 pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
 blanket_clippy_restriction_lints = "allow"
+absolute_paths = "allow"
+single_call_fn = "allow"
+implicit_return = "allow"
+missing_trait_methods = "allow"
+min_ident_chars = "allow"
+arithmetic_side_effects = "allow"
+indexing_slicing = "allow"
+as_conversions = "allow"
+big_endian_bytes = "allow"
+question_mark_used = "allow"
+missing_inline_in_public_items = "allow"
+must_use_candidate = "allow"
+inline_trait_bounds = "allow"
+arbitrary_source_item_ordering = "allow"
+unseparated_literal_suffix = "allow"
+tests_outside_test_module = "allow"
 
 [features]
+base64 = []
 
-[dependencies]
+full = ["base64"]

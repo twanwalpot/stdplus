@@ -1,0 +1,37 @@
+[package]
+name = "stdplus-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+base64 = "0.23.1"
+libfuzzer-sys = "0.4"
+
+[dependencies.stdplus]
+path = ".."
+features = ["full"]
+
+[[bin]]
+name = "base64_encode"
+path = "fuzz_targets/base64/encode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "base64_decode"
+path = "fuzz_targets/base64/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "base64_roundtrip"
+path = "fuzz_targets/base64/roundtrip.rs"
+test = false
+doc = false
+bench = false

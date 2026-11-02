@@ -1,0 +1,358 @@
+//! Simple base64 encoding and decoding implementation.
+//!
+//!
+//! RFC: <https://datatracker.ietf.org/doc/html/rfc4648>.
+
+/// The default padding byte (`=`).
+const PADDING_DEFAULT: u8 = b'=';
+
+/// The alphabet for the standard base64 variant. Consumed by `Config`.
+const ALPHABET_STANDARD: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// The config for the standard base64 variant. Provided by default.
+const STANDARD: Config = match Config::new(ALPHABET_STANDARD, PADDING_DEFAULT) {
+    Ok(config) => config,
+    Err(_) => panic!("invalid standard config"),
+};
+
+/// The alphabet for the URL-safe base64 variant. Consumed by `Config`.
+const ALPHABET_URLSAFE: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/// The config for the URL-safe base64 variant. Provided by default.
+const URLSAFE: Config = match Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT) {
+    Ok(config) => config,
+    Err(_) => panic!("invalid standard config"),
+};
+
+/// Used to drive encoding and decoding.
+/// It is constructed from an alphabet and padding character.
+#[derive(Debug, PartialEq)]
+pub struct Config {
+    /// The decode table is used to find the corresponding
+    /// alphabet character for each possible byte (u8).
+    decode_table: [u8; 256],
+    /// The encode table is used to get the alphabet char
+    /// for each 6 bit group.
+    encode_table: &'static [u8; 64],
+    /// The padding byte.
+    padding: u8,
+}
+
+/// The error returned on invalid config construction.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConfigError {
+    /// The alphabet contains a duplicate character e.g. two times 'R'.
+    Duplicate(u8),
+    /// The alphabet contains a reserved value. Currently only the padding.
+    Reserved(u8),
+}
+
+/// The error returned on invalid decoder input.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DecodeError {
+    /// A character in the input does not match a symbol in the decode table.
+    Invalid(u8),
+    /// The input length is not exactly a multiple of 4.
+    InvalidLength,
+    /// The input either contains more than 2 padding characters or it contains
+    /// padding characters when it should not i.e. input length is divisible by 4.
+    InvalidPadding,
+    /// The input contains non-zero bits after the last encoded byte.
+    TrailingBits,
+}
+
+/// Encode `input` using the standard base64 configuration.
+pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
+    encode_with_config(input.as_ref(), &STANDARD)
+}
+
+/// Decode `input` using the standard base64 configuration.
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
+pub fn decode<T: AsRef<str>>(input: T) -> Result<Vec<u8>, DecodeError> {
+    decode_with_config(input.as_ref(), &STANDARD)
+}
+
+/// Encode `input` using the urlsafe base64 configuration.
+/// Urlsafe means `/` and `+` from standard are replaced with `_` and `+`.
+pub fn encode_urlsafe<T: AsRef<[u8]>>(input: T) -> String {
+    encode_with_config(input.as_ref(), &URLSAFE)
+}
+
+/// Decode `input` using the urlsafe base64 configuration.
+/// Urlsafe means `/` and `+` from standard are replaced with `_` and `+`.
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
+pub fn decode_urlsafe<T: AsRef<str>>(input: T) -> Result<Vec<u8>, DecodeError> {
+    decode_with_config(input.as_ref(), &URLSAFE)
+}
+
+/// Encode `input` using an explicit configuration.
+pub fn encode_with_config(input: &[u8], config: &Config) -> String {
+    let capacity = input.len().div_ceil(3) * 4;
+
+    let mut output = String::with_capacity(capacity);
+
+    let (groups, remainder) = input.as_chunks::<3>();
+    for group in groups {
+        encode_group(config.encode_table, group, &mut output);
+    }
+
+    if !remainder.is_empty() {
+        encode_group(config.encode_table, remainder, &mut output);
+        output.extend(core::iter::repeat_n(
+            config.padding as char,
+            3 - remainder.len(),
+        ));
+    }
+
+    output
+}
+
+/// Decode a group of max 3 bytes (24 bits) into the corresponding 4 chars (24 bits).
+fn encode_group(encode_table: &[u8; 64], group: &[u8], output: &mut String) {
+    debug_assert!(
+        !group.is_empty() && group.len() <= 3,
+        "groups must be at most 3 bytes"
+    );
+
+    let n = group
+        .iter()
+        .enumerate()
+        .fold(0u32, |n, (i, &b)| n | (u32::from(b) << (16 - 8 * i)));
+
+    output.extend(
+        [18, 12, 6, 0]
+            .into_iter()
+            .take(group.len() + 1)
+            .map(|shift: u32| encode_table[((n >> shift) & 0x3F) as usize] as char),
+    );
+}
+
+/// Decode `input` using an explicit configuration.
+///
+/// # Errors
+///
+/// Decoding can fail if the input is invalid. See `DecodeError` for variants.
+pub fn decode_with_config(input: &str, config: &Config) -> Result<Vec<u8>, DecodeError> {
+    if !input.len().is_multiple_of(4) {
+        return Err(DecodeError::InvalidLength);
+    }
+
+    let input_without_padding = input.trim_end_matches(config.padding as char);
+
+    if input.len() - input_without_padding.len() > 2
+        || input_without_padding.contains(config.padding as char)
+    {
+        return Err(DecodeError::InvalidPadding);
+    }
+
+    let data = input_without_padding.as_bytes();
+
+    let mut output = Vec::with_capacity((data.len() >> 2) * 3 + 2);
+
+    let (groups, remainder) = data.as_chunks::<4>();
+
+    for group in groups {
+        output.extend(decode_group(&config.decode_table, group)?);
+    }
+
+    if !remainder.is_empty() {
+        let bytes = decode_group(&config.decode_table, remainder)?;
+        let n_bytes = remainder.len() - 1;
+
+        // Bits past the real data must be zero.
+        // For example 2 chars == 12 bits of data,
+        // which only contains 8 bits of usable data.
+        // The other 4 bits are filler and should all be 0.
+        if bytes[n_bytes..].iter().any(|&b| b != 0) {
+            return Err(DecodeError::TrailingBits);
+        }
+
+        output.extend_from_slice(&bytes[..n_bytes]);
+    }
+
+    Ok(output)
+}
+
+/// Decode a group of max 4 chars (24 bits) into the corresponding 3 bytes (24 bits).
+fn decode_group(decode_table: &[u8; 256], group: &[u8]) -> Result<[u8; 3], DecodeError> {
+    debug_assert!(group.len() <= 4, "groups must be at most 4 bytes");
+
+    let mut n: u32 = 0;
+    for i in 0..4 {
+        let value = match group.get(i) {
+            Some(&c) => match decode_table[c as usize] {
+                0xFF => return Err(DecodeError::Invalid(c)),
+                v => u32::from(v),
+            },
+            None => 0, // missing symbol: zero bits
+        };
+        n = (n << 6u32) | value;
+    }
+
+    let [_, a, b, c] = n.to_be_bytes();
+
+    Ok([a, b, c])
+}
+
+impl Config {
+    /// Create a encoding and decoding config.
+    ///
+    /// Using the same config for encoding and decoding guarantees that `decode(encode(input)) == input`.
+    ///
+    /// # Errors
+    ///
+    /// Invalid alphabets will cause this function to return `ConfigError`.
+    pub const fn new(alphabet: &'static [u8; 64], padding: u8) -> Result<Self, ConfigError> {
+        // It is not possible to use `?` in `const fn`s.
+        if let Err(err) = check_alphabet(alphabet, padding) {
+            return Err(err);
+        }
+
+        let mut decode_table = [0xFF; 256];
+
+        let mut i: u8 = 0;
+        while (i as usize) < alphabet.len() {
+            let s = alphabet[i as usize];
+            decode_table[s as usize] = i;
+            i = i.strict_add(1);
+        }
+
+        Ok(Self {
+            encode_table: alphabet,
+            decode_table,
+            padding,
+        })
+    }
+}
+
+/// Checks wether the give `alphabet` is valid. Valid alphabets are:
+/// - 64 chars long
+/// - have no duplicate chars
+/// - have no reserved chars  (currently only padding is reserved)
+const fn check_alphabet(alphabet: &[u8; 64], padding: u8) -> Result<(), ConfigError> {
+    let mut index = 0;
+
+    while index < alphabet.len() {
+        let byte = alphabet[index];
+
+        if byte == padding {
+            return Err(ConfigError::Reserved(byte));
+        }
+
+        let mut duplicate_i = 0;
+        while duplicate_i < alphabet.len() {
+            if duplicate_i != index && byte == alphabet[duplicate_i] {
+                return Err(ConfigError::Duplicate(byte));
+            }
+            duplicate_i += 1;
+        }
+
+        index += 1;
+    }
+
+    Ok(())
+}
+
+impl core::error::Error for DecodeError {}
+
+impl core::fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            DecodeError::Invalid(c) => write!(f, "invalid input char '{}'", char::from(c)),
+            DecodeError::InvalidLength => write!(f, "invalid length"),
+            DecodeError::InvalidPadding => write!(f, "invalid padding"),
+            DecodeError::TrailingBits => write!(f, "trailing bits"),
+        }
+    }
+}
+
+impl core::error::Error for ConfigError {}
+
+impl core::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            ConfigError::Reserved(byte) => write!(f, "reserved byte '{}'", char::from(byte)),
+            ConfigError::Duplicate(byte) => write!(f, "duplicate byte '{}'", char::from(byte)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_tables() {
+        let config = Config::new(ALPHABET_STANDARD, b'=').unwrap();
+
+        assert_eq!(config.padding, b'=');
+        assert_eq!(config.encode_table, ALPHABET_STANDARD);
+        assert_eq!(
+            config.decode_table,
+            [
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 62, 255, 255, 255, 63, 52,
+                53, 54, 55, 56, 57, 58, 59, 60, 61, 255, 255, 255, 255, 255, 255, 255, 0, 1, 2, 3,
+                4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+                255, 255, 255, 255, 255, 255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+                39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
+            ]
+        );
+
+        assert_eq!(config, STANDARD);
+
+        assert_eq!(
+            Config::new(
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZZbcdefghijklmnopqrstuvwxyz0123456789+/",
+                b'='
+            )
+            .unwrap_err(),
+            ConfigError::Duplicate(b'Z'),
+        );
+
+        assert_eq!(
+            Config::new(
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs=uvwxyz0123456789+/",
+                b'='
+            )
+            .unwrap_err(),
+            ConfigError::Reserved(b'='),
+        );
+
+        Config::new(ALPHABET_STANDARD, PADDING_DEFAULT).unwrap();
+        Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT).unwrap();
+    }
+
+    #[test]
+    fn decode_error() {
+        assert_ne!(DecodeError::InvalidLength.to_string(), "");
+        assert_ne!(DecodeError::InvalidPadding.to_string(), "");
+        assert_ne!(DecodeError::TrailingBits.to_string(), "");
+        assert_ne!(DecodeError::Invalid(b'*').to_string(), "");
+    }
+
+    #[test]
+    fn config_error() {
+        assert_ne!(ConfigError::Duplicate(b'a').to_string(), "");
+        assert_ne!(ConfigError::Reserved(b'=').to_string(), "");
+    }
+}
