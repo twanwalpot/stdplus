@@ -1,14 +1,14 @@
 //! Simple base64 encoding and decoding implementation.
 //!
 //!
-//! https://datatracker.ietf.org/doc/html/rfc4648
+//! <https://datatracker.ietf.org/doc/html/rfc4648>
 
 const PADDING_DEFAULT: u8 = b'=';
 
 const ALPHABET_STANDARD: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-const STANDARD: Config = match Config::new(&ALPHABET_STANDARD, PADDING_DEFAULT) {
+const STANDARD: Config = match Config::new(ALPHABET_STANDARD, PADDING_DEFAULT) {
     Ok(config) => config,
     Err(_) => panic!("invalid standard config"),
 };
@@ -16,7 +16,7 @@ const STANDARD: Config = match Config::new(&ALPHABET_STANDARD, PADDING_DEFAULT) 
 const ALPHABET_URLSAFE: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-const URLSAFE: Config = match Config::new(&ALPHABET_URLSAFE, PADDING_DEFAULT) {
+const URLSAFE: Config = match Config::new(ALPHABET_URLSAFE, PADDING_DEFAULT) {
     Ok(config) => config,
     Err(_) => panic!("invalid standard config"),
 };
@@ -89,7 +89,7 @@ pub fn encode_with_config(input: &[u8], config: &Config) -> String {
     let remainder = groups.remainder();
     if !remainder.is_empty() {
         encode_group(config.encode_table, remainder, &mut output);
-        output.extend(std::iter::repeat_n(
+        output.extend(core::iter::repeat_n(
             config.padding as char,
             3 - groups.remainder().len(),
         ));
@@ -99,7 +99,7 @@ pub fn encode_with_config(input: &[u8], config: &Config) -> String {
 }
 
 fn encode_group(encode_table: &[u8; 64], group: &[u8], output: &mut String) {
-    debug_assert!(group.len() >= 1 && group.len() <= 3);
+    debug_assert!(!group.is_empty() && group.len() <= 3);
 
     let n = group
         .iter()
@@ -116,7 +116,7 @@ fn encode_group(encode_table: &[u8; 64], group: &[u8], output: &mut String) {
 
 /// Decode `input` using an explicit configuration.
 pub fn decode_with_config(input: &str, config: &Config) -> Result<Vec<u8>, DecodeError> {
-    if input.len() % 4 != 0 {
+    if !input.len().is_multiple_of(4) {
         return Err(DecodeError::InvalidLength);
     }
 
@@ -168,7 +168,7 @@ fn decode_group(decode_table: &[u8; 256], group: &[u8]) -> Result<[u8; 3], Decod
             },
             None => 0, // missing symbol: zero bits
         };
-        n = n << 6 | value;
+        n = (n << 6) | value;
     }
 
     let [_, a, b, c] = n.to_be_bytes();
@@ -224,10 +224,10 @@ const fn check_alphabet(alphabet: &[u8; 64], padding: u8) -> Result<(), ConfigEr
     Ok(())
 }
 
-impl std::error::Error for DecodeError {}
+impl core::error::Error for DecodeError {}
 
-impl std::fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             DecodeError::Invalid(c) => write!(f, "invalid input char '{c}'"),
             DecodeError::InvalidLength => write!(f, "invalid length"),
@@ -237,10 +237,10 @@ impl std::fmt::Display for DecodeError {
     }
 }
 
-impl std::error::Error for ConfigError {}
+impl core::error::Error for ConfigError {}
 
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ConfigError::Reserved(byte) => write!(f, "reserved byte '{byte:?}'"),
             ConfigError::Duplicate(byte) => write!(f, "duplicate byte '{byte:?}'"),
