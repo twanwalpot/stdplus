@@ -13,6 +13,7 @@ It also has the following subgoals to accomplish the above two:
 ## Modules
 
 - [X] base64
+- [X] cli
 - [ ] csv
 - [ ] error
 - [ ] hex
