@@ -23,8 +23,19 @@ inline_trait_bounds = "allow"
 arbitrary_source_item_ordering = "allow"
 unseparated_literal_suffix = "allow"
 tests_outside_test_module = "allow"
+pattern_type_mismatch = "allow"
+impl_trait_in_params = "allow"
+shadow_reuse = "allow"
+return_self_not_must_use = "allow"
+exhaustive_enums = "allow"
+print_stderr = "allow"
+string_slice = "allow"
+missing_docs_in_private_items = "allow"
+single_char_lifetime_names = "allow"
+panic = "allow"
 
 [features]
 base64 = []
+cli = []
 
-full = ["base64"]
+full = ["base64", "cli"]
