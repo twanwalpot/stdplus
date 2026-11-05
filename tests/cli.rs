@@ -64,14 +64,14 @@ fn command_accepts_limitless_arguments() {
 fn command_rejects_missing_arguments() {
     let command = Command::new("test").argument("path", ArgumentConfig::default());
 
-    assert!(command.get_matches::<&[String], &String>(&[]).is_err());
+    command.get_matches::<&[String], &String>(&[]).unwrap_err();
 }
 
 #[test]
 fn command_rejects_invalid_argument_count() {
     let command = Command::new("test").argument("paths", ArgumentConfig::default().exact(3));
 
-    assert!(command.get_matches(["one", "two"]).is_err());
+    command.get_matches(["one", "two"]).unwrap_err();
 }
 
 #[test]
@@ -126,32 +126,32 @@ fn command_accepts_options_with_inline_values() {
 fn command_rejects_missing_option_values() {
     let command = Command::new("test").option("count", OptionConfig::default().takes_value(true));
 
-    assert!(command.get_matches(["--count"]).is_err());
+    command.get_matches(["--count"]).unwrap_err();
 }
 
 #[test]
 fn command_rejects_unexpected_option_values() {
     let command = Command::new("test").option("verbose", OptionConfig::default());
 
-    assert!(command.get_matches(["--verbose=true"]).is_err());
+    command.get_matches(["--verbose=true"]).unwrap_err();
 }
 
 #[test]
 fn command_rejects_unknown_options() {
     let command = Command::new("test");
-    assert!(command.get_matches(["--unknown"]).is_err());
+    command.get_matches(["--unknown"]).unwrap_err();
 }
 
 #[test]
 fn command_rejects_unknown_short_options() {
     let command = Command::new("test");
-    assert!(command.get_matches(["-x"]).is_err());
+    command.get_matches(["-x"]).unwrap_err();
 }
 
 #[test]
 fn command_rejects_unknown_arguments() {
     let command = Command::new("test");
-    assert!(command.get_matches(["unknown"]).is_err());
+    command.get_matches(["unknown"]).unwrap_err();
 }
 
 #[test]

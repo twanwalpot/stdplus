@@ -764,7 +764,7 @@ mod tests {
     #[test]
     fn multiple_count() {
         let cmd = Command::new("p").argument("pair", ArgumentConfig::default().exact(2));
-        assert!(cmd.get_matches(["a", "b"]).is_ok());
+        cmd.get_matches(["a", "b"]).unwrap();
         assert_eq!(
             cmd.get_matches(["a"]),
             Err(ParseError::InvalidArgumentCount("pair".into()))
@@ -788,6 +788,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "duplicate short option")]
     fn duplicate_short_panics() {
-        let _ = Command::new("p").option("hello", OptionConfig::default().short('h'));
+        let _: Command = Command::new("p").option("hello", OptionConfig::default().short('h'));
     }
 }

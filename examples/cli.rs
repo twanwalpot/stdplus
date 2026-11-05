@@ -24,6 +24,6 @@ fn main() {
     };
 
     for _ in 0..count {
-        println!("Hello, {name}!")
+        println!("Hello, {name}!");
     }
 }

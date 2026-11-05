@@ -33,6 +33,9 @@ string_slice = "allow"
 missing_docs_in_private_items = "allow"
 single_char_lifetime_names = "allow"
 panic = "allow"
+shadow_unrelated = "allow"
+panic_in_result_fn = "allow"
+print_stdout = "allow"
 
 [features]
 base64 = []
